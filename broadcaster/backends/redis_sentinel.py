@@ -167,13 +167,19 @@ class RedisSentinelBackend(BroadcastBackend):
         # Close connections
         if self._pubsub is not None:
             try:
-                await self._pubsub.aclose()  # type: ignore[no-untyped-call]
+                if hasattr(self._pubsub, 'aclose'):
+                    await self._pubsub.aclose()  # type: ignore[no-untyped-call]
+                else:
+                    await self._pubsub.close()
             except Exception as e:
                 logger.warning(f"Error closing pubsub connection: {type(e).__name__}: {e}")
         
         if self._conn is not None:
             try:
-                await self._conn.aclose()
+                if hasattr(self._conn, 'aclose'):
+                    await self._conn.aclose()
+                else:
+                    await self._conn.close()
             except Exception as e:
                 logger.warning(f"Error closing connection: {type(e).__name__}: {e}")
         
@@ -279,14 +285,20 @@ class RedisSentinelBackend(BroadcastBackend):
             # Close old pubsub connection
             if self._pubsub is not None:
                 try:
-                    await self._pubsub.aclose()  # type: ignore[no-untyped-call]
+                    if hasattr(self._pubsub, 'aclose'):
+                        await self._pubsub.aclose()  # type: ignore[no-untyped-call]
+                    else:
+                        await self._pubsub.close()
                 except Exception:
                     pass  # Ignore errors closing broken connection
             
             # Close old connection
             if self._conn is not None:
                 try:
-                    await self._conn.aclose()
+                    if hasattr(self._conn, 'aclose'):
+                        await self._conn.aclose()
+                    else:
+                        await self._conn.close()
                 except Exception:
                     pass  # Ignore errors closing broken connection
             
@@ -383,10 +395,16 @@ class RedisSentinelStreamBackend(BroadcastBackend):
     async def disconnect(self) -> None:
         """Disconnect from Redis and Sentinel."""
         if self._producer is not None:
-            await self._producer.aclose()
+            if hasattr(self._producer, 'aclose'):
+                await self._producer.aclose()
+            else:
+                await self._producer.close()
         
         if self._consumer is not None:
-            await self._consumer.aclose()
+            if hasattr(self._consumer, 'aclose'):
+                await self._consumer.aclose()
+            else:
+                await self._consumer.close()
 
     async def subscribe(self, channel: str) -> None:
         """Subscribe to a stream."""
@@ -469,7 +487,10 @@ class RedisSentinelStreamBackend(BroadcastBackend):
             # Close old consumer connection
             if self._consumer is not None:
                 try:
-                    await self._consumer.aclose()
+                    if hasattr(self._consumer, 'aclose'):
+                        await self._consumer.aclose()
+                    else:
+                        await self._consumer.close()
                 except Exception:
                     pass  # Ignore errors closing broken connection
             
