@@ -171,7 +171,9 @@ class RedisSentinelBackend(BroadcastBackend):
 
     async def connect(self) -> None:
         """Connect to Redis master through Sentinel."""
+        logger.info(f"Connecting to Redis Sentinel cluster (service: {self._service_name}, nodes: {len(self._sentinels)})")
         await self._connect_sentinel()
+        logger.info(f"Successfully connected to Redis master via Sentinel (service: {self._service_name})")
         self._listener = asyncio.create_task(self._pubsub_listener())
 
     async def _connect_sentinel(self) -> None:
@@ -394,8 +396,9 @@ class RedisSentinelStreamBackend(BroadcastBackend):
             # Replace redis-stream+sentinel with redis+sentinel for parsing
             parse_url = url.replace("redis-stream+sentinel", "redis+sentinel", 1)
             parse_url = parse_url.replace("rediss-stream+sentinel", "rediss+sentinel", 1)
-            self._sentinels, self._service_name, self._connection_kwargs = RedisSentinelBackend._parse_sentinel_url(parse_url)
-            self._sentinel_kwargs = sentinel_kwargs or {}
+            self._sentinels, self._service_name, self._connection_kwargs, parsed_sentinel_kwargs = RedisSentinelBackend._parse_sentinel_url(parse_url)
+            # Merge parsed sentinel_kwargs with any explicitly provided ones (explicit takes precedence)
+            self._sentinel_kwargs = {**parsed_sentinel_kwargs, **(sentinel_kwargs or {})}
         else:
             assert sentinels is not None, "sentinels must be provided if url is not"
             assert service_name is not None, "service_name must be provided if url is not"
@@ -413,7 +416,9 @@ class RedisSentinelStreamBackend(BroadcastBackend):
 
     async def connect(self) -> None:
         """Connect to Redis master through Sentinel for producer and consumer."""
+        logger.info(f"Connecting to Redis Sentinel Stream cluster (service: {self._service_name}, nodes: {len(self._sentinels)})")
         await self._connect_sentinel()
+        logger.info(f"Successfully connected to Redis Stream master via Sentinel (service: {self._service_name})")
 
     async def _connect_sentinel(self) -> None:
         """Establish connection to Sentinel and get master connections."""
