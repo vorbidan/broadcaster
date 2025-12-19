@@ -99,19 +99,35 @@ from broadcaster import Broadcast
 # URL-based configuration
 broadcast = Broadcast("redis+sentinel://sentinel1:26379,sentinel2:26379/mymaster")
 
-# With additional parameters
-broadcast = Broadcast("redis+sentinel://sentinel1:26379,sentinel2:26379/mymaster?db=0&password=secret")
+# With authentication (credentials are used for both Sentinel nodes and Redis master)
+broadcast = Broadcast("redis+sentinel://sentinel1:26379,sentinel2:26379/mymaster?username=user&password=secret")
+
+# With separate credentials for Sentinel vs Redis (if needed)
+broadcast = Broadcast("redis+sentinel://sentinel1:26379,sentinel2:26379/mymaster?sentinel_username=sentinel_user&sentinel_password=sentinel_pass&username=redis_user&password=redis_pass")
+
+# Additional parameters
+broadcast = Broadcast("redis+sentinel://sentinel1:26379,sentinel2:26379/mymaster?db=0&username=user&password=secret")
 
 # SSL/TLS support
-broadcast = Broadcast("rediss+sentinel://sentinel1:26379,sentinel2:26379/mymaster?ssl_certfile=/path/to/cert.pem")
+broadcast = Broadcast("rediss+sentinel://sentinel1:26379,sentinel2:26379/mymaster?username=user&password=secret&ssl_check_hostname=false")
 
-# Direct backend instantiation
+# SSL with certificate files
+broadcast = Broadcast("rediss+sentinel://sentinel1:26379,sentinel2:26379/mymaster?ssl_certfile=/path/to/cert.pem&username=user&password=secret")
+
+# Direct backend instantiation (for advanced configuration)
 from broadcaster.backends.redis_sentinel import RedisSentinelBackend
 
 backend = RedisSentinelBackend(
     sentinels=[("sentinel1", 26379), ("sentinel2", 26379)],
     service_name="mymaster",
-    password="secret",
+    # Credentials for Sentinel nodes
+    sentinel_kwargs={
+        "username": "sentinel_user",
+        "password": "sentinel_pass",
+    },
+    # Credentials for Redis master
+    username="redis_user",
+    password="redis_pass",
     db=0
 )
 broadcast = Broadcast(backend=backend)
@@ -122,6 +138,14 @@ ssl_context = ssl.create_default_context()
 backend = RedisSentinelBackend(
     sentinels=[("sentinel1", 26379), ("sentinel2", 26379)],
     service_name="mymaster",
+    sentinel_kwargs={
+        "username": "user",
+        "password": "secret",
+        "ssl": True,
+        "ssl_context": ssl_context,
+    },
+    username="user",
+    password="secret",
     ssl=True,
     ssl_context=ssl_context
 )
@@ -145,8 +169,11 @@ from broadcaster import Broadcast
 # URL-based configuration
 broadcast = Broadcast("redis-stream+sentinel://sentinel1:26379,sentinel2:26379/mymaster")
 
+# With authentication
+broadcast = Broadcast("redis-stream+sentinel://sentinel1:26379,sentinel2:26379/mymaster?username=user&password=secret")
+
 # With SSL/TLS
-broadcast = Broadcast("rediss-stream+sentinel://sentinel1:26379,sentinel2:26379/mymaster")
+broadcast = Broadcast("rediss-stream+sentinel://sentinel1:26379,sentinel2:26379/mymaster?username=user&password=secret")
 
 # Direct backend instantiation
 from broadcaster.backends.redis_sentinel import RedisSentinelStreamBackend
@@ -154,6 +181,12 @@ from broadcaster.backends.redis_sentinel import RedisSentinelStreamBackend
 backend = RedisSentinelStreamBackend(
     sentinels=[("sentinel1", 26379), ("sentinel2", 26379)],
     service_name="mymaster",
+    sentinel_kwargs={
+        "username": "user",
+        "password": "secret",
+    },
+    username="user",
+    password="secret",
     db=0
 )
 broadcast = Broadcast(backend=backend)

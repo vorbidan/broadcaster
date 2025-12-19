@@ -40,6 +40,8 @@ class RedisSentinelBackend(BroadcastBackend):
         Args:
             url: URL in format redis+sentinel://host1:port1,host2:port2/service_name?param=value
                  or rediss+sentinel:// for SSL connections
+                 Parameters prefixed with 'sentinel_' are passed to Sentinel nodes.
+                 If sentinel credentials not provided, username/password are copied to Sentinel.
             sentinels: List of (host, port) tuples for sentinel nodes
             service_name: Name of the Redis service/master to connect to
             sentinel_kwargs: Additional kwargs for Sentinel client (e.g., ssl=True for sentinel SSL)
@@ -49,11 +51,17 @@ class RedisSentinelBackend(BroadcastBackend):
             - Use rediss+sentinel:// scheme for SSL
             - URL params: ssl_certfile, ssl_keyfile, ssl_ca_certs, ssl_cert_reqs, ssl_check_hostname
             - Or pass ssl=True and SSL context via kwargs when using programmatic init
+            
+        Authentication:
+            - URL: ?username=user&password=pass (applies to both Sentinel and Redis)
+            - URL: ?sentinel_username=u1&sentinel_password=p1&username=u2&password=p2 (separate credentials)
+            - Programmatic: Pass sentinel_kwargs for Sentinel, username/password kwargs for Redis
         """
         if url is not None:
             # Parse redis+sentinel://host1:port1,host2:port2/service_name?db=0&password=xxx
-            self._sentinels, self._service_name, self._connection_kwargs = self._parse_sentinel_url(url)
-            self._sentinel_kwargs = sentinel_kwargs or {}
+            self._sentinels, self._service_name, self._connection_kwargs, parsed_sentinel_kwargs = self._parse_sentinel_url(url)
+            # Merge parsed sentinel_kwargs with any explicitly provided ones (explicit takes precedence)
+            self._sentinel_kwargs = {**parsed_sentinel_kwargs, **(sentinel_kwargs or {})}
         else:
             assert sentinels is not None, "sentinels must be provided if url is not"
             assert service_name is not None, "service_name must be provided if url is not"
@@ -72,11 +80,18 @@ class RedisSentinelBackend(BroadcastBackend):
         self._reconnecting = asyncio.Lock()  # Prevent concurrent reconnection attempts
 
     @staticmethod
-    def _parse_sentinel_url(url: str) -> tuple[list[tuple[str, int]], str, dict[str, typing.Any]]:
+    def _parse_sentinel_url(url: str) -> tuple[list[tuple[str, int]], str, dict[str, typing.Any], dict[str, typing.Any]]:
         """Parse redis+sentinel URL into components.
         
         Supports both redis+sentinel:// and rediss+sentinel:// (SSL) schemes.
         SSL parameters: ssl_certfile, ssl_keyfile, ssl_ca_certs, ssl_cert_reqs, ssl_check_hostname
+        
+        Parameters prefixed with 'sentinel_' are passed to Sentinel authentication:
+        - sentinel_username, sentinel_password: Auth for Sentinel nodes
+        - username, password: Auth for Redis master
+        
+        If sentinel_username/sentinel_password are not provided but username/password are,
+        the same credentials will be used for both Sentinel and Redis master (common case).
         """
         from urllib.parse import parse_qs, urlparse
         
@@ -106,13 +121,24 @@ class RedisSentinelBackend(BroadcastBackend):
         
         # Parse query params for connection kwargs
         connection_kwargs: dict[str, typing.Any] = {}
+        sentinel_kwargs: dict[str, typing.Any] = {}
+        
         if parsed.query:
             params = parse_qs(parsed.query)
             for key, value in params.items():
                 # Take first value if list
                 val = value[0] if isinstance(value, list) else value
+                
+                # Sentinel-specific parameters (prefixed with sentinel_)
+                if key.startswith("sentinel_"):
+                    # Remove sentinel_ prefix and add to sentinel_kwargs
+                    sentinel_key = key[9:]  # Remove "sentinel_" prefix
+                    if sentinel_key == "ssl_check_hostname":
+                        sentinel_kwargs[sentinel_key] = val.lower() in ("true", "1", "yes")
+                    else:
+                        sentinel_kwargs[sentinel_key] = val
                 # Convert db to int
-                if key == "db":
+                elif key == "db":
                     connection_kwargs[key] = int(val)
                 # Convert boolean strings
                 elif key in ("ssl_check_hostname",):
@@ -123,11 +149,25 @@ class RedisSentinelBackend(BroadcastBackend):
                 else:
                     connection_kwargs[key] = val
         
-        # If using SSL scheme, ensure ssl=True is set
+        # If using SSL scheme, ensure ssl=True is set for both
         if use_ssl:
             connection_kwargs["ssl"] = True
+            sentinel_kwargs["ssl"] = True
         
-        return sentinels, service_name, connection_kwargs
+        # If sentinel credentials not explicitly provided, copy from connection credentials
+        # (common case: same credentials for Sentinel and Redis)
+        if "username" in connection_kwargs and "username" not in sentinel_kwargs:
+            sentinel_kwargs["username"] = connection_kwargs["username"]
+        if "password" in connection_kwargs and "password" not in sentinel_kwargs:
+            sentinel_kwargs["password"] = connection_kwargs["password"]
+        
+        # Copy SSL settings to sentinel if not explicitly set
+        if "ssl" in connection_kwargs and "ssl" not in sentinel_kwargs:
+            sentinel_kwargs["ssl"] = connection_kwargs["ssl"]
+        if "ssl_check_hostname" in connection_kwargs and "ssl_check_hostname" not in sentinel_kwargs:
+            sentinel_kwargs["ssl_check_hostname"] = connection_kwargs["ssl_check_hostname"]
+        
+        return sentinels, service_name, connection_kwargs, sentinel_kwargs
 
     async def connect(self) -> None:
         """Connect to Redis master through Sentinel."""
