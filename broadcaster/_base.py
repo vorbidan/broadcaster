@@ -43,6 +43,16 @@ class Broadcast:
 
             return RedisStreamBackend(url)
 
+        elif parsed_url.scheme in ("redis+sentinel", "rediss+sentinel"):
+            from broadcaster.backends.redis_sentinel import RedisSentinelBackend
+
+            return RedisSentinelBackend(url)
+
+        elif parsed_url.scheme in ("redis-stream+sentinel", "rediss-stream+sentinel"):
+            from broadcaster.backends.redis_sentinel import RedisSentinelStreamBackend
+
+            return RedisSentinelStreamBackend(url)
+
         elif parsed_url.scheme in ("postgres", "postgresql"):
             from broadcaster.backends.postgres import PostgresBackend
 

@@ -36,6 +36,7 @@ redis = ["redis"]
 postgres = ["asyncpg"]
 kafka = ["aiokafka"]
 test =  ["pytest", "pytest-asyncio"]
+redis-sentinel = ["redis"]
 
 [project.urls]
 Homepage = "https://github.com/encode/broadcaster"

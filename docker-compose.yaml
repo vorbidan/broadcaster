@@ -27,6 +27,78 @@ services:
     image: "redis:alpine"
     ports:
       - 6379:6379
+  
+  # Redis Sentinel Setup: 3 nodes each running Redis + Sentinel
+  # Node 1: Master (initially)
+  redis-sentinel-1:
+    image: "redis:7-alpine"
+    container_name: redis-sentinel-1
+    command: >
+      sh -c "
+      redis-server --port 6380 --bind 0.0.0.0 --replica-announce-ip 127.0.0.1 &
+      sleep 2 &&
+      echo 'port 26379' > /tmp/sentinel.conf &&
+      echo 'bind 0.0.0.0' >> /tmp/sentinel.conf &&
+      echo 'sentinel announce-ip 127.0.0.1' >> /tmp/sentinel.conf &&
+      echo 'sentinel monitor mymaster 127.0.0.1 6380 2' >> /tmp/sentinel.conf &&
+      echo 'sentinel down-after-milliseconds mymaster 5000' >> /tmp/sentinel.conf &&
+      echo 'sentinel parallel-syncs mymaster 1' >> /tmp/sentinel.conf &&
+      echo 'sentinel failover-timeout mymaster 10000' >> /tmp/sentinel.conf &&
+      redis-sentinel /tmp/sentinel.conf
+      "
+    ports:
+      - "6380:6380"
+      - "26379:26379"
+    network_mode: "host"
+
+  # Node 2: Replica + Sentinel
+  redis-sentinel-2:
+    image: "redis:7-alpine"
+    container_name: redis-sentinel-2
+    command: >
+      sh -c "
+      redis-server --port 6381 --bind 0.0.0.0 --replicaof 127.0.0.1 6380 --replica-announce-ip 127.0.0.1 &
+      sleep 2 &&
+      echo 'port 26380' > /tmp/sentinel.conf &&
+      echo 'bind 0.0.0.0' >> /tmp/sentinel.conf &&
+      echo 'sentinel announce-ip 127.0.0.1' >> /tmp/sentinel.conf &&
+      echo 'sentinel monitor mymaster 127.0.0.1 6380 2' >> /tmp/sentinel.conf &&
+      echo 'sentinel down-after-milliseconds mymaster 5000' >> /tmp/sentinel.conf &&
+      echo 'sentinel parallel-syncs mymaster 1' >> /tmp/sentinel.conf &&
+      echo 'sentinel failover-timeout mymaster 10000' >> /tmp/sentinel.conf &&
+      redis-sentinel /tmp/sentinel.conf
+      "
+    ports:
+      - "6381:6381"
+      - "26380:26380"
+    network_mode: "host"
+    depends_on:
+      - redis-sentinel-1
+
+  # Node 3: Replica + Sentinel
+  redis-sentinel-3:
+    image: "redis:7-alpine"
+    container_name: redis-sentinel-3
+    command: >
+      sh -c "
+      redis-server --port 6382 --bind 0.0.0.0 --replicaof 127.0.0.1 6380 --replica-announce-ip 127.0.0.1 &
+      sleep 2 &&
+      echo 'port 26381' > /tmp/sentinel.conf &&
+      echo 'bind 0.0.0.0' >> /tmp/sentinel.conf &&
+      echo 'sentinel announce-ip 127.0.0.1' >> /tmp/sentinel.conf &&
+      echo 'sentinel monitor mymaster 127.0.0.1 6380 2' >> /tmp/sentinel.conf &&
+      echo 'sentinel down-after-milliseconds mymaster 5000' >> /tmp/sentinel.conf &&
+      echo 'sentinel parallel-syncs mymaster 1' >> /tmp/sentinel.conf &&
+      echo 'sentinel failover-timeout mymaster 10000' >> /tmp/sentinel.conf &&
+      redis-sentinel /tmp/sentinel.conf
+      "
+    ports:
+      - "6382:6382"
+      - "26381:26381"
+    network_mode: "host"
+    depends_on:
+      - redis-sentinel-1
+
   postgres:
     image: "postgres:12"
     environment:
@@ -36,3 +108,7 @@ services:
       - POSTGRES_USER=postgres
     ports:
       - 5432:5432
+
+networks:
+  sentinel-net:
+    driver: bridge
